@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% block title %}Zero-Days — D.A.V.E.{% endblock %}
+{% block body %}
+<div class="shell">
+  <nav class="topnav">
+    <div class="brand">D.A.V.E.</div>
+    <div class="links">
+      <a href="{{ url_for('dashboard') }}">dashboard</a>
+      <a href="{{ url_for('zero_days') }}" class="active">zero-days</a>
+      <a href="{{ url_for('news') }}">news</a>
+      <a href="{{ url_for('pulse') }}">pulse</a>
+      <a href="{{ url_for('chat') }}">chat</a>
+      <a href="{{ url_for('logout') }}">logout</a>
+    </div>
+  </nav>
+
+  <main class="content">
+    <h1>⚡ ZERO-DAYS</h1>
+    <p class="section-note">
+      CISA KEV entries where the NVD publish date is on or at/after CISA's own "added to KEV"
+      date -- meaning exploitation was happening at or before public disclosure, the textbook
+      zero-day pattern. This is a best-effort heuristic off two timestamps, not a vendor
+      confirmation -- treat it as "worth a closer look," not gospel. Broader than the dashboard's
+      relevance section on purpose: shown here regardless of whether it matches your gear, so
+      you keep situational awareness even for things you don't run yet.
+    </p>
+
+    {% if findings %}
+    <div class="findings">
+      {% for f in findings %}
+      <div class="finding finding-critical">
+        <div class="finding-head">
+          <span class="badge badge-critical">⚡ ZERO-DAY</span>
+          <span class="finding-cve"><a href="{{ url_for('finding_detail', cve_id=f.cve_id) }}">{{ f.cve_id }}</a></span>
+          {% if f.matched_asset %}<span class="finding-asset">{{ f.icon }} {{ f.matched_asset }} -- on your network</span>{% endif %}
+        </div>
+        <div class="finding-title">{{ f.title }}</div>
+        <div class="finding-desc">{{ f.description }}</div>
+        {% if f.required_action %}
+        <div class="finding-action"><strong>CISA required action:</strong> {{ f.required_action }}{% if f.due_date %} (due {{ f.due_date }}){% endif %}</div>
+        {% endif %}
+        <a href="{{ url_for('finding_detail', cve_id=f.cve_id) }}" class="finding-nvd-link">Full detail &rarr;</a>
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}
+      <p class="empty-note">Nothing currently matches the zero-day heuristic in your KEV data.</p>
+    {% endif %}
+  </main>
+</div>
+{% endblock %}

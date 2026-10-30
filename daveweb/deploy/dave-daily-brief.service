@@ -1,0 +1,14 @@
+[Unit]
+Description=D.A.V.E. daily threat brief generation
+Wants=network-online.target
+After=network-online.target dave-api.service
+Requires=dave-api.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/youruser/daveweb
+EnvironmentFile=/home/youruser/daveweb/.env
+# Same venv daveweb.service already uses -- this script only needs
+# requests + stdlib sqlite3, both already present there.
+ExecStart=/home/youruser/jarvis_v2/venv/bin/python3 /home/youruser/daveweb/generate_daily_brief.py
+User=youruser

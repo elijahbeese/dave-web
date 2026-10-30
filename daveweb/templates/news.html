@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% block title %}News — D.A.V.E.{% endblock %}
+{% block body %}
+<div class="shell">
+  <nav class="topnav">
+    <div class="brand">D.A.V.E.</div>
+    <div class="links">
+      <a href="{{ url_for('dashboard') }}">dashboard</a>
+      <a href="{{ url_for('zero_days') }}">zero-days</a>
+      <a href="{{ url_for('news') }}" class="active">news</a>
+      <a href="{{ url_for('pulse') }}">pulse</a>
+      <a href="{{ url_for('chat') }}">chat</a>
+      <a href="{{ url_for('logout') }}">logout</a>
+    </div>
+  </nav>
+
+  <main class="content">
+    <h1>📰 CYBER NEWS</h1>
+
+    <div class="brief-panel" data-kind="news" data-suggestions='{{ (news_brief.suggestions if news_brief else []) | tojson }}'>
+      <div class="brief-panel-head">
+        <span class="brief-panel-title">🗞️ NEWS BRIEF (industry-wide)</span>
+        <div class="brief-panel-actions">
+          <button class="chip-btn brief-listen-btn" {% if not news_brief %}disabled{% endif %}>🔊 Listen</button>
+          <button class="chip-btn brief-stop-btn hidden">⏹ Stop</button>
+        </div>
+      </div>
+      {% if news_brief %}
+        <div class="brief-panel-text brief-text">{{ news_brief.brief }}</div>
+        <div class="brief-panel-meta">Generated {{ news_brief.generated_at }} &middot; auto-refreshes every morning via scheduled job</div>
+      {% else %}
+        <div class="brief-panel-text brief-text empty-note">No news brief generated yet today -- the scheduled job runs every morning, or generate one now.</div>
+        <button class="mitigate-btn brief-generate-btn" style="margin-top:0.5rem;">Generate today's news brief</button>
+      {% endif %}
+    </div>
+
+    <p class="section-note">Last 60 articles across vendor threat blogs and general cyber news feeds, newest first. Anything mentioning a CVE or vendor that also appears in your relevant findings gets surfaced there too, under "Related coverage."</p>
+
+    {% if articles %}
+    <div class="articles">
+      {% for a in articles %}
+      <div class="article">
+        <a href="{{ a.link }}" target="_blank" rel="noopener" class="article-title">{{ a.title }}</a>
+        <div class="article-meta">{{ a.source }}{% if a.published %} &middot; {{ a.published }}{% endif %}</div>
+        {% if a.summary %}<div class="article-summary">{{ a.summary|striptags|truncate(220) }}</div>{% endif %}
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}
+      <p class="empty-note">No articles collected yet -- check that the rss_feeds collector has run (it's part of the normal THREATWATCH scheduled run).</p>
+    {% endif %}
+  </main>
+</div>
+<script src="{{ url_for('static', filename='brief.js') }}"></script>
+{% endblock %}

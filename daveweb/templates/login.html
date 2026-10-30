@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block title %}Sign in — D.A.V.E.{% endblock %}
+{% block body %}
+<div class="auth-wrap">
+  <div class="auth-card">
+    <div class="auth-mast">D.A.V.E.</div>
+    <div class="auth-sub">
+      {% if stage == 'totp' %}Enter your 6-digit code{% else %}Sign in{% endif %}
+    </div>
+
+    {% if error %}<div class="auth-error">{{ error }}</div>{% endif %}
+
+    <form method="post">
+      {% if stage == 'totp' %}
+        <input type="hidden" name="stage" value="totp">
+        <input type="text" name="totp_code" inputmode="numeric" autocomplete="one-time-code"
+               maxlength="6" placeholder="000000" autofocus required>
+      {% else %}
+        <input type="hidden" name="stage" value="password">
+        <input type="password" name="password" placeholder="Password" autofocus required>
+      {% endif %}
+      <button type="submit">Continue</button>
+    </form>
+  </div>
+</div>
+{% endblock %}

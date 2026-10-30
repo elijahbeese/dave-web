@@ -1,0 +1,229 @@
+{% extends "base.html" %}
+{% block title %}Dashboard — D.A.V.E.{% endblock %}
+{% block body %}
+<div class="shell">
+  <nav class="topnav">
+    <div class="brand">D.A.V.E.</div>
+    <div class="links">
+      <a href="{{ url_for('dashboard') }}" class="active">dashboard</a>
+      <a href="{{ url_for('zero_days') }}">zero-days</a>
+      <a href="{{ url_for('news') }}">news</a>
+      <a href="{{ url_for('pulse') }}">pulse</a>
+      <a href="{{ url_for('chat') }}">chat</a>
+      <a href="{{ url_for('logout') }}">logout</a>
+    </div>
+  </nav>
+
+  <main class="content content-wide">
+    <h1>THREATWATCH</h1>
+
+    <div class="stat-row">
+      <div class="stat"><span class="stat-n">{{ kev_count }}</span><span class="stat-label">KEV entries</span></div>
+      <div class="stat"><span class="stat-n">{{ cve_count }}</span><span class="stat-label">tracked CVEs</span></div>
+      <div class="stat"><span class="stat-n">{{ group_count }}</span><span class="stat-label">ATT&amp;CK groups</span></div>
+      <div class="stat"><span class="stat-n">{{ article_count }}</span><span class="stat-label">articles tracked</span></div>
+    </div>
+
+    <div class="brief-panel" data-kind="threat" data-suggestions='{{ (daily_brief.suggestions if daily_brief else []) | tojson }}'>
+      <div class="brief-panel-head">
+        <span class="brief-panel-title">📋 DAILY BRIEF (your gear)</span>
+        <div class="brief-panel-actions">
+          <button class="chip-btn brief-listen-btn" {% if not daily_brief %}disabled{% endif %}>🔊 Listen</button>
+          <button class="chip-btn brief-stop-btn hidden">⏹ Stop</button>
+        </div>
+      </div>
+      {% if daily_brief %}
+        <div class="brief-panel-text brief-text">{{ daily_brief.brief }}</div>
+        <div class="brief-panel-meta">Generated {{ daily_brief.generated_at }} &middot; auto-refreshes every morning via scheduled job</div>
+      {% else %}
+        <div class="brief-panel-text brief-text empty-note">No brief generated yet today -- the scheduled job runs every morning, or generate one now.</div>
+        <button class="mitigate-btn brief-generate-btn" style="margin-top:0.5rem;">Generate today's brief</button>
+      {% endif %}
+      <a href="{{ url_for('news') }}" class="finding-nvd-link" style="margin-top:0.5rem;display:inline-block;">Want the broader industry picture instead? See the News Brief &rarr;</a>
+    </div>
+
+    <h2>Trends <span class="section-note" style="margin:0;">(click a slice or bar to filter the queue below)</span></h2>
+    <div class="chart-row">
+      <div class="chart-box"><canvas id="chartSeverityPie"></canvas></div>
+      <div class="chart-box"><canvas id="chartTrend"></canvas></div>
+      <div class="chart-box"><canvas id="chartVendors"></canvas></div>
+    </div>
+
+    <h2>Priority queue</h2>
+    <p class="section-note">Asset-matched findings, most critical first. Click a row for the full writeup (checklist, D.A.V.E. guidance, related coverage).</p>
+    <div class="filter-chips">
+      <button class="chip-btn chip-active" data-filter="all">All ({{ relevant|length }})</button>
+      <button class="chip-btn" data-filter="critical">Critical</button>
+      <button class="chip-btn" data-filter="high">High</button>
+      <button class="chip-btn" data-filter="medium">Medium</button>
+      <button class="chip-btn" data-filter="low">Low</button>
+    </div>
+
+    {% if relevant %}
+    <table class="queue" id="queueTable">
+      <thead>
+        <tr><th></th><th>CVE</th><th>Asset</th><th>Score</th><th>Title</th><th></th></tr>
+      </thead>
+      <tbody>
+        {% for f in relevant %}
+        <tr class="queue-row" data-criticality="{{ f.criticality|lower }}" data-vendor="{{ f.matched_asset|lower }}"
+            onclick="window.location='{{ url_for('finding_detail', cve_id=f.cve_id) }}'">
+          <td><span class="badge badge-{{ f.criticality|lower }}">{{ SEVERITY_ICONS[f.criticality] }}</span></td>
+          <td class="q-cve">{{ f.cve_id }}{% if f.zero_day %} <span class="zd-tag" title="Likely zero-day">⚡</span>{% endif %}</td>
+          <td class="q-asset">{{ f.icon }} {{ f.matched_asset }}</td>
+          <td class="q-score">{% if f.is_kev %}<span class="finding-kev">KEV</span>{% elif f.cvss_score %}{{ f.cvss_score }}{% endif %}</td>
+          <td class="q-title">{{ f.title }}</td>
+          <td class="q-arrow">&rarr;</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+      <p class="empty-note">Nothing in THREATWATCH's current data matches your asset list right now.</p>
+    {% endif %}
+
+    <div class="panel-row">
+      <div class="panel-col">
+        <h2>📰 Recent headlines</h2>
+        {% if top_news %}
+        <div class="articles articles-compact">
+          {% for a in top_news %}
+          <div class="article article-compact">
+            <a href="{{ a.link }}" target="_blank" rel="noopener" class="article-title">{{ a.title }}</a>
+            <div class="article-meta">{{ a.source }}</div>
+          </div>
+          {% endfor %}
+        </div>
+        <a href="{{ url_for('news') }}" class="finding-nvd-link">All news &rarr;</a>
+        {% else %}
+          <p class="empty-note">No articles collected yet.</p>
+        {% endif %}
+      </div>
+      <div class="panel-col">
+        <h2>Collector runs</h2>
+        <table class="runs">
+          <thead><tr><th>Collector</th><th>Status</th><th>Records</th><th>Run at</th></tr></thead>
+          <tbody>
+            {% for r in last_runs %}
+            <tr class="{{ 'bad' if r['status'] != 'ok' else '' }}">
+              <td>{{ r['collector'] }}</td>
+              <td>{{ r['status'] }}</td>
+              <td>{{ r['records_in'] }}</td>
+              <td>{{ r['run_at'] }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <details class="raw-brief-details">
+      <summary>Raw last-24h feed (every KEV/CVE entry, not just relevant ones)</summary>
+      <pre class="brief">{{ brief if brief else "Nothing new in the last 24 hours." }}</pre>
+    </details>
+  </main>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
+<script>
+const CHART_DATA = {{ charts|tojson }};
+
+function applyFilter(kind) {
+  document.querySelectorAll('.filter-chips .chip-btn').forEach(b => b.classList.remove('chip-active'));
+  const target = document.querySelector(`.filter-chips [data-filter="${kind}"]`);
+  if (target) target.classList.add('chip-active');
+  document.querySelectorAll('#queueTable .queue-row').forEach(row => {
+    row.style.display = (kind === 'all' || row.dataset.criticality === kind) ? '' : 'none';
+  });
+  document.getElementById('queueTable')?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+document.querySelectorAll('.filter-chips .chip-btn').forEach(btn => {
+  btn.addEventListener('click', () => applyFilter(btn.dataset.filter));
+});
+
+// -- Severity distribution (pie, clickable -> filters the queue) --
+const severityLabels = Object.keys(CHART_DATA.severity);
+new Chart(document.getElementById('chartSeverityPie'), {
+  type: 'pie',
+  data: {
+    labels: severityLabels,
+    datasets: [{
+      data: Object.values(CHART_DATA.severity),
+      backgroundColor: ['#c0392b', '#e67e22', '#f1c40f', '#7f8c8d'],
+      borderColor: '#121a33',
+      borderWidth: 2,
+    }],
+  },
+  options: {
+    onClick: (evt, elements) => {
+      if (!elements.length) return;
+      const label = severityLabels[elements[0].index];
+      applyFilter(label.toLowerCase());
+    },
+    onHover: (evt, elements) => { evt.native.target.style.cursor = elements.length ? 'pointer' : 'default'; },
+    plugins: {
+      legend: { position: 'bottom', labels: { color: '#dbe2f0', font: { size: 11 } } },
+      title: { display: true, text: 'Severity distribution', color: '#dbe2f0' },
+    },
+  },
+});
+
+// -- 30-day trend (not clickable -- date granularity doesn't map cleanly to the queue) --
+new Chart(document.getElementById('chartTrend'), {
+  type: 'line',
+  data: {
+    labels: CHART_DATA.trend.map(d => d.day),
+    datasets: [{
+      label: 'New CVEs/day',
+      data: CHART_DATA.trend.map(d => d.n),
+      borderColor: '#e74c3c',
+      backgroundColor: 'rgba(231,76,60,0.15)',
+      fill: true,
+      tension: 0.2,
+    }],
+  },
+  options: {
+    plugins: { legend: { display: false }, title: { display: true, text: '30-day CVE trend', color: '#dbe2f0' } },
+    scales: {
+      x: { ticks: { color: '#8a93ab', maxTicksLimit: 8 }, grid: { color: '#223052' } },
+      y: { ticks: { color: '#8a93ab' }, grid: { color: '#223052' }, beginAtZero: true },
+    },
+  },
+});
+
+// -- Top KEV vendors (clickable -> filters queue by vendor substring) --
+const vendorLabels = CHART_DATA.top_vendors.map(d => d.vendor);
+new Chart(document.getElementById('chartVendors'), {
+  type: 'bar',
+  data: {
+    labels: vendorLabels,
+    datasets: [{
+      label: 'KEV entries',
+      data: CHART_DATA.top_vendors.map(d => d.n),
+      backgroundColor: '#7c9eff',
+    }],
+  },
+  options: {
+    indexAxis: 'y',
+    onClick: (evt, elements) => {
+      if (!elements.length) return;
+      const vendor = (vendorLabels[elements[0].index] || '').toLowerCase();
+      document.querySelectorAll('.filter-chips .chip-btn').forEach(b => b.classList.remove('chip-active'));
+      document.querySelectorAll('#queueTable .queue-row').forEach(row => {
+        row.style.display = row.dataset.vendor.includes(vendor.split(' ')[0]) ? '' : 'none';
+      });
+      document.getElementById('queueTable')?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    },
+    onHover: (evt, elements) => { evt.native.target.style.cursor = elements.length ? 'pointer' : 'default'; },
+    plugins: { legend: { display: false }, title: { display: true, text: 'Top exploited vendors (all-time KEV, click to filter)', color: '#dbe2f0' } },
+    scales: {
+      x: { ticks: { color: '#8a93ab' }, grid: { color: '#223052' }, beginAtZero: true },
+      y: { ticks: { color: '#8a93ab' }, grid: { color: '#223052' } },
+    },
+  },
+});
+
+</script>
+<script src="{{ url_for('static', filename='mitigate.js') }}"></script>
+<script src="{{ url_for('static', filename='brief.js') }}"></script>
+{% endblock %}

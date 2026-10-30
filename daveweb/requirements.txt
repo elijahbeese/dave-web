@@ -1,0 +1,5 @@
+Flask>=3.0,<4
+pyotp>=2.9,<3
+qrcode>=7.4,<8
+gunicorn>=21.2,<22
+requests>=2.31,<3

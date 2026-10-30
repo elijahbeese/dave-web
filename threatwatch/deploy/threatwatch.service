@@ -1,0 +1,11 @@
+[Unit]
+Description=THREATWATCH collector run
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/threatwatch
+EnvironmentFile=/opt/threatwatch/.env
+ExecStart=/opt/threatwatch/venv/bin/python -m threatwatch.run_collectors
+User=youruser

@@ -1,0 +1,26 @@
+[Unit]
+Description=D.A.V.E. Web dashboard/chat
+Wants=network-online.target
+After=network-online.target dave-api.service
+Requires=dave-api.service
+
+[Service]
+Type=simple
+WorkingDirectory=/home/youruser/daveweb
+EnvironmentFile=/home/youruser/daveweb/.env
+# daveweb only talks to api_server.py over HTTP now (see dave_api.py) --
+# it does NOT need ollama/chromadb, so it doesn't need jarvis_v2's venv
+# either. Using it anyway here because it's already set up with
+# flask/gunicorn/pyotp/qrcode/requests installed; a dedicated venv works
+# just as well if you'd rather keep this fully decoupled from jarvis_v2.
+ExecStart=/home/youruser/jarvis_v2/venv/bin/gunicorn \
+    --bind 127.0.0.1:8421 \
+    --workers 2 \
+    --timeout 120 \
+    app:app
+User=youruser
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,116 @@
+{% extends "base.html" %}
+{% block title %}Pulse — D.A.V.E.{% endblock %}
+{% block body %}
+<div class="shell">
+  <nav class="topnav">
+    <div class="brand">D.A.V.E.</div>
+    <div class="links">
+      <a href="{{ url_for('dashboard') }}">dashboard</a>
+      <a href="{{ url_for('zero_days') }}">zero-days</a>
+      <a href="{{ url_for('news') }}">news</a>
+      <a href="{{ url_for('pulse') }}" class="active">pulse</a>
+      <a href="{{ url_for('chat') }}">chat</a>
+      <a href="{{ url_for('logout') }}">logout</a>
+    </div>
+  </nav>
+
+  <main class="content">
+    <h1>📡 PULSE</h1>
+    <p class="section-note">
+      Reddit ({{ subreddit_count }} subreddits) and X ({{ x_account_count }} accounts + tracked
+      keywords) — manual pull only, no scheduled job. Each click makes real metered X API calls,
+      so it only runs when you ask for it, never automatically.
+    </p>
+
+    <div class="brief-panel" data-kind="pulse" data-suggestions='{{ (pulse_brief.suggestions if pulse_brief else []) | tojson }}'>
+      <div class="brief-panel-head">
+        <span class="brief-panel-title">🗞️ PULSE BRIEF (last 24h)</span>
+        <div class="brief-panel-actions">
+          <button class="chip-btn brief-listen-btn" {% if not pulse_brief %}disabled{% endif %}>🔊 Listen</button>
+          <button class="chip-btn brief-stop-btn hidden">⏹ Stop</button>
+        </div>
+      </div>
+      {% if pulse_brief %}
+        <div class="brief-panel-text brief-text">{{ pulse_brief.brief }}</div>
+        <div class="brief-panel-meta">Generated {{ pulse_brief.generated_at }} &middot; summarizes whatever's in the DB, not tied to any one pull</div>
+      {% else %}
+        <div class="brief-panel-text brief-text empty-note">No pulse brief generated yet today -- pull some posts first, then generate one.</div>
+        <button class="mitigate-btn brief-generate-btn" style="margin-top:0.5rem;">Generate pulse brief</button>
+      {% endif %}
+    </div>
+
+    <div class="brief-panel" data-kind="refresh">
+      <div class="brief-panel-head">
+        <span class="brief-panel-title">🔄 REFRESH</span>
+        <div class="brief-panel-actions">
+          <button id="pulse-refresh-btn" class="mitigate-btn">Pull now</button>
+        </div>
+      </div>
+      <div id="pulse-refresh-status" class="brief-panel-meta"></div>
+    </div>
+
+    {% if last_runs %}
+    <details class="raw-feed">
+      <summary>Last pull history</summary>
+      <table class="runs-table">
+        <tr><th>Collector</th><th>Status</th><th>Records</th><th>When</th></tr>
+        {% for r in last_runs %}
+        <tr>
+          <td>{{ r.collector }}</td>
+          <td>{{ r.status }}</td>
+          <td>{{ r.records_in }}</td>
+          <td>{{ r.run_at }}</td>
+        </tr>
+        {% endfor %}
+      </table>
+    </details>
+    {% endif %}
+
+    <h2>Reddit</h2>
+    {% if reddit_posts %}
+    <div class="articles">
+      {% for p in reddit_posts %}
+      <div class="article">
+        <a href="{{ p.permalink }}" target="_blank" rel="noopener" class="article-title">r/{{ p.subreddit }}: {{ p.title }}</a>
+        <div class="article-meta">u/{{ p.author }} &middot; {{ p.score }} pts &middot; {{ p.num_comments }} comments &middot; pulled {{ p.fetched_at }}</div>
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}
+      <p class="empty-note">Nothing pulled yet — hit "Pull now" above.</p>
+    {% endif %}
+
+    <h2>X — followed accounts</h2>
+    {% if account_tweets %}
+    <div class="articles">
+      {% for t in account_tweets %}
+      <div class="article">
+        <div class="article-title">@{{ t.author_handle }}</div>
+        <div class="article-summary">{{ t.text }}</div>
+        <div class="article-meta">{{ t.like_count }} likes &middot; {{ t.created_at }} &middot; pulled {{ t.fetched_at }}</div>
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}
+      <p class="empty-note">Nothing pulled yet — hit "Pull now" above.</p>
+    {% endif %}
+
+    <h2>X — keyword matches</h2>
+    {% if keyword_tweets %}
+    <div class="articles">
+      {% for t in keyword_tweets %}
+      <div class="article">
+        <div class="article-title">[{{ t.matched_keyword }}] @{{ t.author_handle }}</div>
+        <div class="article-summary">{{ t.text }}</div>
+        <div class="article-meta">{{ t.created_at }} &middot; pulled {{ t.fetched_at }}</div>
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}
+      <p class="empty-note">Nothing pulled yet — hit "Pull now" above.</p>
+    {% endif %}
+  </main>
+</div>
+<script src="{{ url_for('static', filename='brief.js') }}"></script>
+<script src="{{ url_for('static', filename='pulse.js') }}"></script>
+{% endblock %}

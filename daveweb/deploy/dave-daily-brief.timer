@@ -1,0 +1,11 @@
+[Unit]
+Description=Generate D.A.V.E.'s daily threat brief every morning
+
+[Timer]
+# 6:30 AM local time -- after THREATWATCH's overnight collector runs have
+# had a chance to pull fresh data, before you're actually up checking.
+OnCalendar=*-*-* 06:30:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target

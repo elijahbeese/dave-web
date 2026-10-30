@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+{% block title %}{{ cve_id }} — D.A.V.E.{% endblock %}
+{% block body %}
+<div class="shell">
+  <nav class="topnav">
+    <div class="brand">D.A.V.E.</div>
+    <div class="links">
+      <a href="{{ url_for('dashboard') }}">dashboard</a>
+      <a href="{{ url_for('zero_days') }}">zero-days</a>
+      <a href="{{ url_for('news') }}">news</a>
+      <a href="{{ url_for('pulse') }}">pulse</a>
+      <a href="{{ url_for('chat') }}">chat</a>
+      <a href="{{ url_for('logout') }}">logout</a>
+    </div>
+  </nav>
+
+  <main class="content">
+    <a href="{{ url_for('dashboard') }}" class="back-link">&larr; back to dashboard</a>
+
+    {% if not finding %}
+      <h1>{{ cve_id }}</h1>
+      <p class="empty-note">
+        Not currently in the "relevant to your network" list -- either it doesn't match
+        anything in <code>threatwatch/assets.py</code>, or it's aged out of the lookback
+        window. <a href="https://nvd.nist.gov/vuln/detail/{{ cve_id }}" target="_blank" rel="noopener">Check the raw NVD record &rarr;</a>
+      </p>
+    {% else %}
+      <div class="finding-head" style="margin-bottom:0.5rem;">
+        <span class="badge badge-{{ finding.criticality|lower }}">{{ SEVERITY_ICONS[finding.criticality] }} {{ finding.criticality }}</span>
+        <span class="finding-cve">{{ finding.cve_id }}</span>
+        <span class="finding-asset">{{ finding.icon }} {{ finding.matched_asset }}</span>
+        {% if finding.cvss_score %}<span class="finding-cvss">CVSS {{ finding.cvss_score }}</span>{% endif %}
+        {% if finding.is_kev %}<span class="finding-kev">CONFIRMED EXPLOITED (CISA KEV)</span>{% endif %}
+        {% if finding.zero_day %}<span class="finding-kev">⚡ LIKELY ZERO-DAY</span>{% endif %}
+      </div>
+      <h1>{{ finding.title }}</h1>
+      <p class="finding-desc" style="font-size:1rem;">{{ finding.description }}</p>
+
+      {% if finding.required_action %}
+      <h2>CISA required action</h2>
+      <div class="finding-action">{{ finding.required_action }}{% if finding.due_date %} (due {{ finding.due_date }}){% endif %}</div>
+      {% endif %}
+
+      <h2>Checklist (standard practice, not AI/gov-specific)</h2>
+      <ul class="checklist">
+        {% for step in finding.checklist %}<li>{{ step }}</li>{% endfor %}
+      </ul>
+
+      <h2>D.A.V.E.-written guidance (AI-generated)</h2>
+      <div class="mitigation" data-cve="{{ finding.cve_id }}"
+           data-description="{{ finding.description|e }}"
+           data-matched-asset="{{ finding.matched_asset|e }}"
+           data-cvss-score="{{ finding.cvss_score or '' }}"
+           data-required-action="{{ (finding.required_action or '')|e }}">
+        {% if finding.cached_guidance %}
+          <pre class="mitigation-text">{{ finding.cached_guidance }}</pre>
+        {% else %}
+          <button class="mitigate-btn">Generate D.A.V.E. mitigation guidance</button>
+          <div class="mitigation-result hidden"></div>
+        {% endif %}
+      </div>
+
+      {% if finding.references %}
+      <h2>References</h2>
+      <div class="finding-refs">
+        {% for ref in finding.references %}<a href="{{ ref }}" target="_blank" rel="noopener">{{ ref }}</a><br>{% endfor %}
+      </div>
+      {% endif %}
+      <a href="https://nvd.nist.gov/vuln/detail/{{ finding.cve_id }}" target="_blank" rel="noopener" class="finding-nvd-link">NVD record &rarr;</a>
+
+      {% if finding.related_articles %}
+      <h2>📰 Related coverage</h2>
+      <div class="articles">
+        {% for a in finding.related_articles %}
+        <div class="article">
+          <a href="{{ a.link }}" target="_blank" rel="noopener" class="article-title">{{ a.title }}</a>
+          <div class="article-meta">{{ a.source }}{% if a.published %} &middot; {{ a.published }}{% endif %}</div>
+        </div>
+        {% endfor %}
+      </div>
+      {% endif %}
+    {% endif %}
+  </main>
+</div>
+<script src="{{ url_for('static', filename='mitigate.js') }}"></script>
+{% endblock %}
