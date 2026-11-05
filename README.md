@@ -1,15 +1,18 @@
 # D.A.V.E. — Distributed Autonomous Virtual Entity
 
 A self-hosted homelab AI assistant, built from scratch: a locally-run LLM
-pipeline, a password+MFA-walled web dashboard, and three independent data
-modules it reads from (vulnerability intel, cyber/defense news, and a
-personal Reddit/X feed). Everything runs on a single home server, exposed to
-the internet only through Tailscale Funnel — no cloud hosting, no port
-forwarding, no third-party API holding the actual assistant.
+pipeline, a password+MFA-walled web dashboard, live camera feeds with
+motion detection, and three independent data modules it reads from
+(vulnerability intel, cyber/defense news, and a personal Reddit/X feed).
+Everything runs on a single home server, exposed to the internet only
+through Tailscale Funnel — no cloud hosting, no port forwarding, no
+third-party API holding the actual assistant.
 
-This repo covers **daveweb** (the dashboard/chat frontend) and
-**threatwatch** (the vulnerability-intel collector it displays). The
-Reddit/X collector, **pulse**, is a separate repo: [github.com/elijahbeese/pulse](https://github.com/elijahbeese/pulse).
+This repo covers **daveweb** (the dashboard/chat frontend), **threatwatch**
+(the vulnerability-intel collector it displays), and **camera_bridge** (the
+Pi 5 service that owns the door/window cameras and feeds daveweb's
+`/cameras` page). The Reddit/X collector, **pulse**, is a separate repo:
+[github.com/elijahbeese/pulse](https://github.com/elijahbeese/pulse).
 The actual LLM core — `jarvis_v2/api_server.py`, which owns the
 Ollama/Chroma connections and does the real retrieval + generation — stays
 private; this repo is everything that sits on top of it.
@@ -65,6 +68,33 @@ Three decisions shape everything else here:
               +---------------------+
 ```
 
+### Camera path
+
+camera_bridge runs separately, on the Pi 5 (not daveonprem) — it's the
+only thing that touches the cameras or the Pan-Tilt HAT directly:
+
+```
+   (Hikvision PoE IP cam)        (Pi Camera Module 3 + Pan-Tilt HAT)
+         |  RTSP                         |  CSI
+         v                               v
+   +----------------------------------------------+
+   |              camera_bridge (Pi 5)             |
+   |   stream/snapshot/pantilt + /clips (motion)   |
+   +----------------------------------------------+
+                        ^
+                        | HTTP, token-gated, LAN/tailnet only
+                        | (never behind Funnel)
+                        |
+   +------------------------------+
+   |   daveweb  (/cameras page)   |
+   +------------------------------+
+```
+
+`motion_watcher.py`, also on the Pi, listens to the door camera's own
+ISAPI alertStream directly (not through camera_bridge) — on a motion
+event it saves a short clip to local disk and pushes an ntfy.sh alert,
+independent of whether daveweb or api_server.py are even running.
+
 daveweb never talks to Ollama/Chroma directly — it proxies chat requests
 into `api_server.py`'s own `/ask` endpoint over localhost HTTP
 (`dave_api.py`), the same way a second client would. That keeps exactly one
@@ -102,6 +132,13 @@ that reads everything pulled in the last 24h and writes a full, paraphrased
 writeup — not a top-N digest, but weighted like a real newspaper, so an
 entertainment subreddit having the highest post volume on a given day
 doesn't let it dominate the brief.
+
+**Cameras** (`/cameras`) — live door/window feeds proxied from
+camera_bridge on the Pi 5, an "ask D.A.V.E. what it sees" box per camera
+(grabs a fresh snapshot, runs it through local vision inference), and a
+motion-triggered clip browser — the door camera's own ISAPI motion
+detection fires a short RTSP clip to local disk plus an ntfy.sh push,
+listed here with inline playback.
 
 **Chat** (`/chat`) — a direct line into `api_server.py`'s own `/ask`, with
 the same retrieval, web search, and interaction logging the assistant
@@ -141,6 +178,10 @@ Every brief panel (threat/news/pulse) has a small chat box under it:
 4. **Serving**: daveweb reads straight from threatwatch's and pulse's
    SQLite files on page load — no API layer between them, since they're
    all on the same box.
+5. **Camera feeds**: independent of the rest of this pipeline —
+   camera_bridge owns the camera hardware on the Pi 5 and serves live
+   frames/clips over HTTP; motion_watcher.py reacts to the door camera's
+   own motion detection in real time, not on any page-load or timer.
 
 ## Security notes
 
@@ -156,6 +197,10 @@ Every brief panel (threat/news/pulse) has a small chat box under it:
   what's expected, with blank values.
 - Session cookies are httponly, SameSite=Lax, and expire after 12 hours by
   default.
+- camera_bridge (the Pi 5 service, separate box from daveweb) is **never**
+  put behind Tailscale Funnel — it's LAN/tailnet-only, gated by its own
+  `CAMERA_BRIDGE_TOKEN`. daveweb proxies every camera request through
+  itself rather than ever pointing a browser at the Pi directly.
 
 ## Setup
 
@@ -165,6 +210,9 @@ Each component has its own detailed setup README:
   setup, systemd services, Tailscale Funnel exposure.
 - [`threatwatch/README.md`](./threatwatch/README.md) — the vulnerability
   collector, its data sources, schema, and deploy timer.
+- [`camera_bridge/README.md`](./camera_bridge/README.md) — the Pi 5
+  camera/Pan-Tilt service, physical setup, and motion detection/clip
+  storage.
 - pulse has its own separate repo and README:
   [github.com/elijahbeese/pulse](https://github.com/elijahbeese/pulse).
 
