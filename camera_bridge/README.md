@@ -4,7 +4,13 @@ Runs on the Pi 5. Owns both cameras and the Pan-Tilt HAT directly, and is
 the only thing that does -- daveweb and D.A.V.E.'s core never touch camera
 hardware themselves, they talk to this service over HTTP instead.
 
-- **Door cam** -- USB webcam, plugged straight into the Pi 5.
+- **Door cam** -- Hikvision-compatible PoE IP turret camera, not USB
+  despite this doc's original plan. Powered via a PoE injector, bridged
+  wirelessly to the LAN through a WiFi extender in bridge mode (no direct
+  ethernet run to the door), read over RTSP -- see `DOOR_CAM_RTSP_URL`
+  below. The camera also exposes Hikvision's ISAPI over plain HTTP on
+  itself, which `motion_watcher.py` uses for motion detection (see
+  below) -- separate from camera_bridge's own stream/snapshot endpoints.
 - **Window cam** -- Pi Camera Module 3 on the CSI ribbon, mounted on the
   Pimoroni Pan-Tilt HAT, same Pi.
 
@@ -28,18 +34,22 @@ hardware themselves, they talk to this service over HTTP instead.
    - Route the camera ribbon so it isn't pinched when the HAT seats flush
      on the header.
 
-2. **USB webcam** -- just plug it into any USB port on the Pi 5. Confirm
-   it enumerates:
-   ```bash
-   ls /dev/video*
-   ```
-   If you've got more than one `/dev/videoN` listed (common -- some
-   webcams expose 2+ nodes), figure out which one is the actual capture
-   device:
-   ```bash
-   v4l2-ctl --list-devices   # sudo apt install v4l-utils if missing
-   ```
-   Set `DOOR_CAM_DEVICE` in `.env` to match if it isn't 0.
+2. **Door cam (PoE IP camera)** -- no physical connection to the Pi at
+   all. Power it via a PoE injector, confirm it's reachable on your LAN
+   (its own web portal, usually plain HTTP on its IP), and set its admin
+   credentials there. The Pi doesn't need to be anywhere near it --
+   camera_bridge pulls the stream over the network via RTSP.
+
+   If ethernet isn't practical to run to the camera's mounting location
+   (ours wasn't), bridge it over WiFi with an extender in AP/bridge mode
+   between the camera and your router/switch instead of running cable --
+   the camera itself has no WiFi radio, it just needs *an* ethernet port
+   to plug into, which the extender provides wirelessly.
+
+   Set `DOOR_CAM_RTSP_URL` in `.env` to the camera's full RTSP URL
+   (credentials embedded, e.g.
+   `rtsp://admin:yourpassword@<camera-ip>:554/Streaming/Channels/101`).
+   `DOOR_CAM_DEVICE`/USB fallback only matters if you leave this blank.
 
 3. **Enable the camera + I2C interfaces**:
    ```bash
@@ -146,11 +156,38 @@ systemctl status camera-bridge.service
   daveweb (or a bug in it) can't drive the servo into its mechanical
   limit repeatedly.
 
+## Motion detection & clip storage
+
+`motion_watcher.py` runs as its own systemd service (`motion-watcher.service`),
+separate from this one -- it holds a long-lived connection to the door
+camera's own ISAPI alertStream and reacts when the camera's own DSP
+flags motion (not a frame-polling/YOLO setup -- the camera does the
+detection, this just listens).
+
+Requires motion detection to actually be turned on in the camera's own
+config first (off by default):
+```bash
+curl -s --digest -u admin:'yourpassword' -X PUT -H "Content-Type: application/xml" \
+  --data-binary @motion_detection_enable.xml \
+  http://<camera-ip>/ISAPI/System/Video/inputs/channels/1/motionDetection
+```
+(GET that same URL first to see the current config and flip `<enabled>`
+to `true` while keeping your existing sensitivity/grid settings.)
+
+On a motion event: grabs a short RTSP clip to local disk
+(`~/camera_clips/<camera>/<date>/`, `MOTION_CLIP_DIR` to override),
+prunes anything past `MOTION_RETENTION_DAYS` (default 60), and pushes an
+ntfy.sh notification with a snapshot (`NTFY_TOPIC` in `.env`).
+
+camera_bridge itself exposes the stored clips for daveweb to list/play:
+```
+GET /clips/{camera}                      -- JSON list, newest first
+GET /clips/{camera}/{date}/{filename}     -- the actual clip (video/mp4)
+```
+both token-gated the same as every other endpoint here.
+
 ## Known gaps
 
-- No motion detection / recording yet -- this only ever serves the
-  current live frame, nothing is saved to disk. Worth adding if you want
-  a rolling buffer for "what happened at the door 10 minutes ago."
 - Single viewer assumption isn't enforced -- multiple browser tabs
   hitting `/stream/door.mjpg` simultaneously all share the same
   background-captured frames (that's the point, no extra camera load),
