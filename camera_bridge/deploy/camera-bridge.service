@@ -1,0 +1,22 @@
+[Unit]
+Description=camera_bridge - door/window camera + pan-tilt HTTP service
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=youruser
+WorkingDirectory=/home/youruser/camera_bridge
+EnvironmentFile=/home/youruser/camera_bridge/.env
+ExecStart=/home/youruser/camera_bridge/venv/bin/uvicorn app:app --host 0.0.0.0 --port 8600
+Restart=on-failure
+RestartSec=5
+
+# Access to the camera devices and I2C bus for the Pan-Tilt HAT. If your
+# user isn't already in these groups, add them first:
+#   sudo usermod -aG video,i2c youruser
+# (log out/in, or reboot, for group changes to take effect)
+SupplementaryGroups=video i2c
+
+[Install]
+WantedBy=multi-user.target

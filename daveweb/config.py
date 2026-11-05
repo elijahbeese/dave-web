@@ -28,3 +28,8 @@ SESSION_LIFETIME_HOURS = int(os.environ.get("DAVEWEB_SESSION_HOURS", "12"))
 # own default so the two never collide out of the box.
 HOST = os.environ.get("DAVEWEB_HOST", "127.0.0.1")
 PORT = int(os.environ.get("DAVEWEB_PORT", "8421"))
+
+# camera_bridge runs on the Pi 5, reachable over Tailscale. Must match
+# CAMERA_BRIDGE_TOKEN in camera_bridge's own .env on the Pi exactly.
+CAMERA_BRIDGE_BASE = os.environ.get("CAMERA_BRIDGE_BASE", "http://<pi-tailscale-ip>:8600")
+CAMERA_BRIDGE_TOKEN = os.environ.get("CAMERA_BRIDGE_TOKEN", "")

@@ -1,0 +1,10 @@
+fastapi
+uvicorn[standard]
+opencv-python-headless
+pantilthat
+
+# picamera2 is NOT installed via pip here -- on Raspberry Pi OS it comes
+# from apt (python3-picamera2), built against the OS's own libcamera. A
+# pip install of picamera2 either fails or installs a broken build that
+# can't actually talk to the camera stack. See README.md's setup steps.
+requests

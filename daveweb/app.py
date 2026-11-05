@@ -1,5 +1,5 @@
 """D.A.V.E. Web -- password+MFA-walled dashboard, chatbot, and THREATWATCH
-brief, meant to run on yourhost and be exposed via Tailscale Funnel.
+brief, meant to run on daveonprem and be exposed via Tailscale Funnel.
 
 Deliberately NOT embedded in WordPress: elijahbeese.com stays untouched
 (no PHP plugin, no shared login with WordPress), this runs as its own app
@@ -11,7 +11,9 @@ import datetime as dt
 import os
 import sys
 
-from flask import Flask, render_template, request, redirect, url_for, session, jsonify
+import requests
+
+from flask import Flask, render_template, request, redirect, url_for, session, jsonify, Response, stream_with_context
 
 import auth
 import config
@@ -374,6 +376,147 @@ def api_pulse_refresh():
         except Exception as exc:  # noqa: BLE001 - report it, don't 500 the whole request
             results[label] = f"error: {exc}"
     return jsonify({"results": results, "ran_at": dt.datetime.now().isoformat()})
+
+
+
+_VALID_CAMERAS = ("door", "window")
+
+
+def _camera_headers():
+    return {"X-Camera-Token": config.CAMERA_BRIDGE_TOKEN}
+
+
+@app.route("/cameras")
+@auth.login_required
+def cameras():
+    return render_template("cameras.html")
+
+
+@app.route("/api/camera/stream/<camera>")
+@auth.login_required
+def api_camera_stream(camera):
+    """Proxies camera_bridge's MJPEG stream through daveweb instead of
+    pointing the browser at the Pi directly -- keeps camera_bridge
+    reachable only from daveweb's own box (Tailscale/LAN), with the
+    password+MFA wall as the only thing a browser ever talks to, same
+    pattern as everything else in this app.
+    """
+    if camera not in _VALID_CAMERAS:
+        return jsonify({"error": "camera must be 'door' or 'window'"}), 400
+    try:
+        upstream = requests.get(
+            f"{config.CAMERA_BRIDGE_BASE}/stream/{camera}.mjpg",
+            headers=_camera_headers(), stream=True, timeout=10,
+        )
+    except requests.RequestException as exc:
+        return jsonify({"error": f"couldn't reach camera_bridge: {exc}"}), 502
+
+    return Response(
+        stream_with_context(upstream.iter_content(chunk_size=4096)),
+        content_type=upstream.headers.get("Content-Type", "multipart/x-mixed-replace; boundary=frame"),
+    )
+
+
+@app.route("/api/camera/snapshot/<camera>")
+@auth.login_required
+def api_camera_snapshot(camera):
+    if camera not in _VALID_CAMERAS:
+        return jsonify({"error": "camera must be 'door' or 'window'"}), 400
+    try:
+        upstream = requests.get(
+            f"{config.CAMERA_BRIDGE_BASE}/snapshot/{camera}.jpg",
+            headers=_camera_headers(), timeout=10,
+        )
+    except requests.RequestException as exc:
+        return jsonify({"error": f"couldn't reach camera_bridge: {exc}"}), 502
+    if upstream.status_code != 200:
+        return jsonify({"error": upstream.text[:300]}), upstream.status_code
+    return Response(upstream.content, content_type="image/jpeg")
+
+
+
+@app.route("/api/camera/clips/<camera>")
+@auth.login_required
+def api_camera_clips(camera):
+    """Lists motion-triggered clips for a camera -- door cam only has any
+    right now, window cam has no motion detection pipeline yet."""
+    if camera not in _VALID_CAMERAS:
+        return jsonify({"error": "camera must be 'door' or 'window'"}), 400
+    try:
+        upstream = requests.get(
+            f"{config.CAMERA_BRIDGE_BASE}/clips/{camera}",
+            headers=_camera_headers(), timeout=10,
+        )
+    except requests.RequestException as exc:
+        return jsonify({"error": f"couldn't reach camera_bridge: {exc}"}), 502
+    if upstream.status_code != 200:
+        return jsonify({"error": upstream.text[:300]}), upstream.status_code
+    return jsonify(upstream.json())
+
+
+@app.route("/api/camera/clips/<camera>/<date>/<filename>")
+@auth.login_required
+def api_camera_clip_file(camera, date, filename):
+    """Proxies the actual clip video through daveweb -- browser never talks
+    to the Pi directly, same pattern as the live stream/snapshot."""
+    if camera not in _VALID_CAMERAS:
+        return jsonify({"error": "camera must be 'door' or 'window'"}), 400
+    try:
+        upstream = requests.get(
+            f"{config.CAMERA_BRIDGE_BASE}/clips/{camera}/{date}/{filename}",
+            headers=_camera_headers(), stream=True, timeout=30,
+        )
+    except requests.RequestException as exc:
+        return jsonify({"error": f"couldn't reach camera_bridge: {exc}"}), 502
+    if upstream.status_code != 200:
+        return jsonify({"error": upstream.text[:300]}), upstream.status_code
+    return Response(
+        stream_with_context(upstream.iter_content(chunk_size=65536)),
+        content_type=upstream.headers.get("Content-Type", "video/mp4"),
+    )
+
+
+@app.route("/api/camera/pantilt", methods=["GET", "POST"])
+@auth.login_required
+def api_camera_pantilt():
+    """GET returns the window cam's last-known pan/tilt position; POST
+    moves it. Only the window cam has a Pan-Tilt HAT -- the door cam is a
+    static USB webcam, so this endpoint doesn't take a camera argument."""
+    try:
+        if request.method == "GET":
+            upstream = requests.get(
+                f"{config.CAMERA_BRIDGE_BASE}/pantilt/status",
+                headers=_camera_headers(), timeout=10,
+            )
+        else:
+            body = request.json or {}
+            upstream = requests.post(
+                f"{config.CAMERA_BRIDGE_BASE}/pantilt/move",
+                json={"pan": body.get("pan", 0), "tilt": body.get("tilt", 0)},
+                headers=_camera_headers(), timeout=10,
+            )
+    except requests.RequestException as exc:
+        return jsonify({"error": f"couldn't reach camera_bridge: {exc}"}), 502
+    if upstream.status_code != 200:
+        return jsonify({"error": upstream.text[:300]}), upstream.status_code
+    return jsonify(upstream.json())
+
+
+@app.route("/api/camera/ask", methods=["POST"])
+@auth.login_required
+def api_camera_ask():
+    """'Ask D.A.V.E. what it sees' -- proxies into api_server.py's
+    /vision/ask (see dave_api.ask_vision), which fetches a fresh snapshot
+    from camera_bridge itself and runs it through Claude's vision API.
+    daveweb never touches the image bytes for this path.
+    """
+    body = request.json or {}
+    camera = body.get("camera", "")
+    if camera not in _VALID_CAMERAS:
+        return jsonify({"error": "camera must be 'door' or 'window'"}), 400
+    question = (body.get("question") or "").strip() or None
+    answer = dave_api.ask_vision(camera, question)
+    return jsonify({"answer": answer})
 
 
 if __name__ == "__main__":

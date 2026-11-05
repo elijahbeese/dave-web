@@ -1,0 +1,16 @@
+[Unit]
+Description=motion_watcher - door camera motion detection -> clip storage + ntfy alerts
+After=network-online.target camera-bridge.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=youruser
+WorkingDirectory=/home/youruser/camera_bridge
+EnvironmentFile=/home/youruser/camera_bridge/.env
+ExecStart=/home/youruser/camera_bridge/venv/bin/python motion_watcher.py
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

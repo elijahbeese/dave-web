@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+{% block title %}Cameras — D.A.V.E.{% endblock %}
+{% block body %}
+<div class="shell">
+  <nav class="topnav">
+    <div class="brand">D.A.V.E.</div>
+    <div class="links">
+      <a href="{{ url_for('dashboard') }}">dashboard</a>
+      <a href="{{ url_for('zero_days') }}">zero-days</a>
+      <a href="{{ url_for('news') }}">news</a>
+      <a href="{{ url_for('pulse') }}">pulse</a>
+      <a href="{{ url_for('cameras') }}" class="active">cameras</a>
+      <a href="{{ url_for('chat') }}">chat</a>
+      <a href="{{ url_for('logout') }}">logout</a>
+    </div>
+  </nav>
+
+  <main class="content camera-content">
+    <div class="camera-grid">
+
+      <section class="camera-panel" data-camera="door">
+        <h2>🚪 Door</h2>
+        <img class="camera-stream" src="{{ url_for('api_camera_stream', camera='door') }}" alt="Door camera stream">
+        <div class="camera-ask">
+          <div class="camera-ask-log"></div>
+          <form class="camera-ask-form">
+            <input type="text" class="camera-ask-input" placeholder="Ask D.A.V.E. what it sees..." autocomplete="off">
+            <button type="submit" class="chip-btn camera-ask-send">Ask</button>
+          </form>
+        </div>
+        <div class="camera-clips">
+          <h3>Recent clips</h3>
+          <video class="camera-clip-player" controls style="display:none; width:100%;"></video>
+          <div class="camera-clips-list"></div>
+        </div>
+      </section>
+
+      <section class="camera-panel" data-camera="window">
+        <h2>🪟 Window</h2>
+        <img class="camera-stream" src="{{ url_for('api_camera_stream', camera='window') }}" alt="Window camera stream">
+        <div class="pantilt-controls">
+          <div class="pantilt-row">
+            <button type="button" class="chip-btn pantilt-btn" data-pan="-10" data-tilt="0">◀</button>
+            <button type="button" class="chip-btn pantilt-btn" data-pan="0" data-tilt="10">▲</button>
+            <button type="button" class="chip-btn pantilt-btn" data-pan="10" data-tilt="0">▶</button>
+          </div>
+          <div class="pantilt-row">
+            <button type="button" class="chip-btn pantilt-btn" data-pan="0" data-tilt="0" data-center="1">center</button>
+            <button type="button" class="chip-btn pantilt-btn" data-pan="0" data-tilt="-10">▼</button>
+            <span class="pantilt-status">pan 0° / tilt 0°</span>
+          </div>
+        </div>
+        <div class="camera-ask">
+          <div class="camera-ask-log"></div>
+          <form class="camera-ask-form">
+            <input type="text" class="camera-ask-input" placeholder="Ask D.A.V.E. what it sees..." autocomplete="off">
+            <button type="submit" class="chip-btn camera-ask-send">Ask</button>
+          </form>
+        </div>
+        <div class="camera-clips">
+          <h3>Recent clips</h3>
+          <video class="camera-clip-player" controls style="display:none; width:100%;"></video>
+          <div class="camera-clips-list"></div>
+        </div>
+      </section>
+
+    </div>
+  </main>
+</div>
+<script src="{{ url_for('static', filename='cameras.js') }}"></script>
+{% endblock %}

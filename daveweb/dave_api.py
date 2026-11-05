@@ -93,12 +93,60 @@ def ask_dave(question: str, use_web: bool = True, cite_sources: bool = True) -> 
     return resp.json().get("answer") or "(no response)"
 
 
+def ask_vision(camera: str, question: str | None = None) -> str:
+    """'Ask D.A.V.E. what it sees' -- proxies into api_server.py's
+    /vision/ask, which fetches a fresh snapshot from camera_bridge itself
+    and runs it through Claude's vision API. daveweb never touches the
+    image bytes for this path."""
+    if not config.DAVE_GUI_PASSWORD:
+        return (
+            "DAVE_GUI_PASSWORD isn't set in daveweb's .env -- add the same "
+            "password api_server.py checks against."
+        )
+
+    payload = {"camera": camera, "question": question}
+
+    try:
+        token = _get_token()
+        resp = requests.post(
+            f"{config.DAVE_API_BASE}/vision/ask",
+            json=payload,
+            headers={"X-Dave-Session": token},
+            timeout=30,
+        )
+        if resp.status_code == 401:
+            token = _get_token(force_refresh=True)
+            resp = requests.post(
+                f"{config.DAVE_API_BASE}/vision/ask",
+                json=payload,
+                headers={"X-Dave-Session": token},
+                timeout=30,
+            )
+    except _LoginFailed as exc:
+        return str(exc)
+    except requests.ConnectionError:
+        return (
+            f"Couldn't reach D.A.V.E.'s API server at {config.DAVE_API_BASE} "
+            "-- is api_server.py running?"
+        )
+    except requests.Timeout:
+        return "D.A.V.E.'s API server didn't respond in time (30s)."
+    except requests.RequestException as exc:
+        return f"Request to D.A.V.E.'s API server failed: {exc}"
+
+    if resp.status_code != 200:
+        return f"D.A.V.E.'s API server returned {resp.status_code}: {resp.text[:300]}"
+
+    return resp.json().get("answer") or "(no response)"
+
+
 def generate_mitigation(cve_id: str, description: str, matched_asset: str,
                          cvss_score=None, required_action: str = "") -> str:
     """Ask D.A.V.E. (the real one, via /ask) to write mitigation/patch
     guidance for one specific finding. This is explicitly AI-generated --
-    the caller is responsible for labeling it as such in the UI: useful
-    output, never presented as if a human wrote or verified it.
+    the caller is responsible for labeling it as such in the UI, same
+    principle as the Cyber Defense Daily AI-brief plan: useful output,
+    never presented as if a human wrote or verified it.
     """
     severity_line = f"CVSS score: {cvss_score}\n" if cvss_score else ""
     kev_line = f"CISA's required action: {required_action}\n" if required_action else ""
